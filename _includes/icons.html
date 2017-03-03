@@ -1,5 +1,13 @@
 {% assign icons = include.icons %}
 
+<li>
+     <a href="{{ '/about/' | prepend: site.baseurl }}">
+        <i class="fa fa-fw fa-id-card-o"></i>
+    </a>
+</li>
+
+
+
 {% if icons.rss %}
 <li>
     <a href="{{ '/feed.xml' | prepend: site.baseurl }}">
@@ -11,7 +19,7 @@
 {% if icons.email %}
 <li>
     <a href="mailto:{{ icons.email }}">
-        <i class="fa fa-fw fa-envelope"></i>
+        <i class="fa fa-fw fa-envelope-o"></i>
     </a>
 </li>
 {% endif %}

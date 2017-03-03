@@ -5,8 +5,8 @@
 # baseurl: ""
 url: http://ttskch.github.io
 baseurl: /jekyll-ttskch-theme
-title: Your name
-description: Some descriptions of yourself.
+title: myeyesareblind
+description: iOS Developer by day, lisper by night<br>Writing on programming topics.
 avatar: /assets/img/ogp.png
 # favicon: /favicon.ico
 favicon: /assets/img/ogp.png
@@ -17,12 +17,12 @@ language: en
 # Icons
 #
 icons:
-  rss: true
-  email:
-  github: ttskch
+  rss: false
+  email: myeyesareblind@gmail.com
+  github: myeyesareblind
   bitbucket:
-  twitter: ttskch
-  facebook:
+  twitter: myeyesareblind_
+  facebook: myeyesareblind
   google_plus:
   tumblr:
   behance:
