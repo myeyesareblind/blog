@@ -27,8 +27,8 @@
         .title {
             display: inline-block;
             color: $site-title-color;
-            font-weight: bold;
-            margin-top: 0.5em;
+            font-weight: normal;
+            margin-top: 0;
             &.slim {
                 margin-top: 0;
             }
@@ -42,6 +42,7 @@
             line-height: 1em;
             margin-top: 0.5em;
             color: lighten($site-title-color, 20%);
+            font-weight: normal;
         }
     }
 }
