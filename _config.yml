@@ -1,16 +1,12 @@
 #
 # Basic settings.
 #
-# url: http://localhost:4000
-# baseurl: ""
 url: http://ttskch.github.io
 baseurl: /jekyll-ttskch-theme
 title: myeyesareblind
 description: iOS Developer by day, lisper by night<br>Writing on programming topics.
-avatar: /assets/img/ogp.png
-# favicon: /favicon.ico
-favicon: /assets/img/ogp.png
-# language: ja
+avatar: /assets/img/Kirill.jpg
+favicon: /assets/img/hide.png
 language: en
 
 #
