@@ -7,11 +7,10 @@ tags: swift objc hash boost ios osx
 TLDR: to combine hashes of 2 objects, use this [cocoapod](https://github.com/myeyesareblind/HashCombine)
 
 Another day, when implementing a cache in iOS/OSX app, I used NSSet with objects of type `Message`.
-```swift
-class Message {
-    let msgType: Int
-    let content: String
-}
+```obj-c
+@interface Message: NSObject
+@property (readwrite) NSString *content;
+@property (readwrite) NSUInteger msgType;
 ```
 
 When using NSSet with custom objects, it's important to override
@@ -19,12 +18,12 @@ When using NSSet with custom objects, it's important to override
 (or `-(NSUInteger)hash` for obj-c)
 for faster lookup. You probably know [why](http://nshipster.com/equality/).
 
-Most of the time the object has single unique property, which one can use as `hashValue`, but `Message` doesn't.
-`hashValue` must take into account both properties: `msgType` and `content`. We need to combine them. The easiest thing to do is:
-```swift
+Most of the time the object has single unique property, which one can use as `hash`, but `Message` doesn't.
+`hash` must take into account both properties: `msgType` and `content`. We need to combine them. The easiest thing to do is:
+```obj-c
 /// DON'T DO THIS
-public var hashValue {
-    return msgType.hashValue + content.hashValue
+- (NSUInteger)hash {
+  return msgType + content.hash
 }
 ```
 which would work almost ok. Well, not really. If fields are somewhat correlated - it's a disaster as I'll show later.
@@ -61,57 +60,93 @@ inline void hash_combine_impl(SizeT& seed, SizeT value)
 
 Boost uses sort of Shift-Add-XOR hash function.
 
-Also, search on cocoapods revealed these 2 projects:
-https://github.com/irace/BRYHashCodeBuilder
-https://github.com/levigroker/HashBuilder
-There is an article from Mike Ash on this topic as well:
-https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html
+There is an article from [Mike Ash](https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html) on this topic as well. Which suggests using rotate and xor:
+```objc
+#define NSUINT_BIT (CHAR_BIT * sizeof(NSUInteger))
+#define NSUINTROTATE(val, howmuch) ((((NSUInteger)val) << howmuch) | (((NSUInteger)val) >> (NSUINT_BIT - howmuch)))
 
-Having all this, it's better to run a quick test to see which one works best.
-I picked simple data: combination of integers, integer and string and 2 string with various combinations.
-The number of data samples is `1000000`.
+- (NSUInteger)hash
+{
+    return NSUINTROTATE(self.content.hash, NSUINT_BIT / 2) ^ self.msgType;
+}
+```
 
 
-See a (test project)[https://github.com/myeyesareblind/HashCombine] for more details.
+[Apache.Commons.HashCodeBuilder](https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/builder/HashCodeBuilder.html) suggests using prime integer summation and multiplication:
+```objc
+void PrimeIntegerHashCombine(NSUInteger* hashCombine, NSUInteger value) {
+    *hashCombine = *hashCombine * 37 + value;
+}
+- (NSUInteger)hash {
+    NSUInteger hash = 17;
+    hash = hash * 37 + self.content.hash;
+    hash = hash * 37 + self.msgType;
+    return hash
+}
+```
+    
+
+
+Having all this, it's better to run a quick test to see which one is fastest. The ideal function must be calculated very fast and generate no collisions at all.
+
 To keep things simple, I only tried simplest functions:
 
-* `sum`
-* `xor`
-* `string-concat`
-* `mike-ash`
-* `prime-integer-multiply`
-* `boost`
-* `oat`
-* `fnv`
+* `sum`: `hash1 + hash2`
+* `xor`: `hash1 ^ hash2`
+* [`mike-ash`](https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html)
+* [`prime-integer-multiply`](https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/builder/HashCodeBuilder.html)
+* [`boost`](http://www.boost.org/doc/libs/1_35_0/doc/html/hash/combine.html)
+* [`oat`](http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx)
+* [`fnv`](http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx)
 
-And results are curious:
+I picked simple data: composed objects that consist of 
+* integer[1..1000000] and rnd(10)
+* rnd(1000000) and rnd(1000000)
+* UUID and UUID
+* String(i) for i = 1...1000000
 
-Hash-Func     | 2 same int    | 2 reverse int | int and small rnd |   2 rnd   | 2 strings | time
-------------- | ------------- | ------------- | ----------------- | --------- | --------- | ----
-sum           | 1000000       | 1             | 651062            | 734929    | 1000000   | 8.01646101474762
-xor           | 1             | 482054        | 999970            | 999999    | 1         | 3.582207024097443
-string-concat | 1000000       | 999998        | 1000000           | 1000000   | 1000000   | 29.69862800836563
-mike-ash      | 999973        | 1000000       | 1000000           | 1000000   | 952245    | 9.646197021007538
-prime-int-mul | 1000000       | 1000000       | 1000000           | 986641    | 1000000   | 7.852792024612427
-boost         | 1000000       | 1000000       | 1000000           | 1000000   | 1000000   | 9.370872020721436
-oat           | 1000000       | 1000000       | 1000000           | 1000000   | 1000000   | 11.10435301065445
-fnv           | 1000000       | 1000000       | 1000000           | 1000000   | 1000000   | 11.40823596715927
+See a (test project)[https://github.com/myeyesareblind/HashCombine] for more details.
 
-One thing to notice is that `sum` and `xor` work much better then expected. This is because NSNumber has a smart hash method. Look:
+One thing to note: NSNumber has a smart hash method. Look:
 ```obj-c
 [NSNumber numberWithInt:1].hash = 2654435761
 [NSNumber numberWithInt:2].hash = 5308871522
 ```
-Even a small change produces completely different hash, which leads to good distribution. But on a corelated data, they fall miserably.
+Combining using `NSNumber.hash` will give much better results.
 
-`String-concat` works great, but is 3x time slowly than any other.
+And these are result, the values are in seconds. The smaller - the better.
 
-The next functions are more complicated, but they produce much better result.
-`mike-ash` and `prime-int-mul` don't provide perfect hash for this input and collision number is noticable. They are still much-much better then trivial `sum` or `xor` and should be fine for most data.
+Hash-Func     | int, rnd(10) | rnd, rnd | UUID, UUID | Str(i), Str(i) | total
+------------- | ------------ | -------- | ---------- | -------------- | -----
+sum           | 9.15         | 17.88    | 14.71      | 78.85          | 120.59
+xor           | 7.28         | ∞        | 14.20      | ∞              | ∞
+mike-ash      | 5.56         | 6.07     | 10.96      | 8.45           | 31.04
+prime-int-mul | 4.27         | 6.15     | 10.98      | 7.11           | 28.5
+boost         | 4.61         | 6.12     | 10.87      | 7.96           | 29.5
+oat           | 5.50         | 6.05     | 11.02      | 8.44           | 31
+fnv           | 4.71         | 6.05     | 11.81      | 7.88           | 30.45
 
-`boost`, `oat` and `fnv` provide perfect hash on this input. This comes with no surprise - those algorithms are proven and wildly used. `boost` is the most effective, but it's missing 64bit constant and it's also said to fail avalanche test.
-`oat` or `fnv` is a coin-flip, both are perfect. Since I have to choose one - I pick `oat`, because it's implementation is simpler.
+Another useful insight is how many collisions did the function generate. The smaller - the better.
 
-I've made a [cocoapod](https://github.com/myeyesareblind/HashCombine) for it and a pleasant swift version.
+Hash-Func     | int, rnd(10) | rnd, rnd | UUID, UUID | Str(i), Str(i) | total
+------------- | ------------ | -------- | ---------- | -------------- | -----
+sum           | 3486708      | 2640790  | 0          | 0              | 6127498
+xor           | 6512749      | ∞        | 0          | k              | ∞
+mike-ash      | 0            | 0        | 0          | 784989         | 784989
+prime-int-mu  | 0            | 132252   | 0          | 0              | 132252
+boost         | 13036        | 78221    | 0          | 0              | 91257
+oat           | 0            | 0        | 0          | 0              | 0
+fnv           | 0            | 0        | 0          | 0              | 0
 
-See you next time and happy hashing.
+* `∞` means I couldn't wait so long. `xor` on correlated fields is a bad idea.
+* `sum` is 4 times slower then any other function on 2 strings input. I am not sure why that happened, there is really no reason for it. Ignoring this outlier it's still much slower.
+* `mike-ash` did well, but somehow on 2 strings generated a lot of collision, which affected the result.
+* `prime-int-mul` is the fastest on this input. It requires just a few instructions and generated 1.3% of collisions only on 2 random integers input.
+* `boost` is like `prime-int-mul`: it requires few instructions, but generates more collisions.
+* `oat` and `fnv` don't have any collisions, but are slow to calculate.
+
+Basically all, but trivial functions, have similar performance. `sum` and `xor` are very fast to calculate, but have too many collisions which leads to poor overall performance. 
+
+Since `prime-int-mul` was the fastest, I made a [cocoapod](https://github.com/myeyesareblind/HashCombine) for it.
+
+Happy hashing.
