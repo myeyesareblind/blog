@@ -130,8 +130,8 @@ Another useful insight is how many collisions did the function generate. The sma
 
 Hash-Func     | int, rnd(10) | rnd, rnd | UUID, UUID | Str(i), Str(i) | total
 ------------- | ------------ | -------- | ---------- | -------------- | -----
-sum           | 3486708      | 2640790  | 0          | 0              | 6127498
-xor           | 6512749      | ∞        | 0          | k              | ∞
+sum           | 3487593      | 2640790  | 0          | 0              | 6127498
+xor           | 6512749      | 2818959  | 0          | 9999999        | 19331707
 mike-ash      | 0            | 0        | 0          | 784989         | 784989
 prime-int-mu  | 0            | 132252   | 0          | 0              | 132252
 boost         | 13036        | 78221    | 0          | 0              | 91257
@@ -139,7 +139,8 @@ oat           | 0            | 0        | 0          | 0              | 0
 fnv           | 0            | 0        | 0          | 0              | 0
 
 * `∞` means I couldn't wait so long. `xor` on correlated fields is a bad idea.
-* `sum` is 4 times slower then any other function on 2 strings input. I am not sure why that happened, there is really no reason for it. Ignoring this outlier it's still much slower.
+* `sum` is 4 times slower then any other function on 2 strings input. I am not sure why that happened, there is really no reason for it. Ignoring this outlier it's still much slower due to high number of collisions.
+* `xor` failed on 2 rnd and 2 strings input. Not sure what is wrong with rnd, rnd. 2 strings failed because there is only 1 hash value for all of them - 0, since 2 hashes negate each other.
 * `mike-ash` did well, but somehow on 2 strings generated a lot of collision, which affected the result.
 * `prime-int-mul` is the fastest on this input. It requires just a few instructions and generated 1.3% of collisions only on 2 random integers input.
 * `boost` is like `prime-int-mul`: it requires few instructions, but generates more collisions.
