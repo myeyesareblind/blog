@@ -1,8 +1,8 @@
 #
 # Basic settings.
 #
-url: http://ttskch.github.io
-baseurl: /jekyll-ttskch-theme
+url: http://myeyesareblind.github.io
+baseurl:
 title: myeyesareblind
 description: iOS Developer by day, lisper by night<br>Writing on programming topics.
 avatar: /assets/img/Kirill.jpg
