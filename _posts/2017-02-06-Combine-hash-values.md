@@ -4,52 +4,49 @@ title: Combining hash values
 tags: swift objc hash boost ios osx
 ---
 
-TLDR: to combine hashes of 2 objects, use this [cocoapod](https://github.com/myeyesareblind/HashCombine)
-
-Another day, when implementing a cache in iOS/OSX app, I used NSSet with objects of type `Message`.
-```obj-c
-@interface Message: NSObject
-@property (readwrite) NSString *content;
-@property (readwrite) NSUInteger msgType;
+TLDR: to make a hash of a custom class, that contains few primitive properties with defined `hash` methods - use this
+```
+NSUInteger hash = 17 * 37 + self.prop1.hash;
+hash = 17 * 37 + self.prop2.hash;
+return hash;
 ```
 
-When using NSSet with custom objects, it's important to override
-`public var hashValue: Int { get }`
-(or `-(NSUInteger)hash` for obj-c)
-for faster lookup. You probably know [why](http://nshipster.com/equality/).
-
-Most of the time the object has single unique property, which one can use as `hash`, but `Message` doesn't.
-`hash` must take into account both properties: `msgType` and `content`. We need to combine them. The easiest thing to do is:
+## Hashing
+`NSDictionary` is a collection that we use everyday. Most of the time we use a native type as a key, something like `NSDictionary<NSString, MyClass>` and everything just works. But sometimes it's required to use a custom object as a key. For example, I needed to store array of events per date-range: `NSDictionary<MyDateRange, NSArray>`, where `MyDateRange` is:
 ```obj-c
-/// DON'T DO THIS
+@interface MyDateRange
+@property (readwrite) NSDate *start;
+@property (readwrite) NSDate *end;
+@end
+```
+When using a custom `NSObject` as a key in dictionary it's required to implement `isEqual:`, `copyWithZone:` and `hash` methods. `isEqual` and `copyWithZone` are easy: we simply compare/copy `NSDate` properties. `hash` is not: we need to combine hashes of 2 `NSDate`.
+In this article I want to discuss:
+1. The properties that a good hash function must possess.
+2. Existing implementations from a few well-known libraries.
+3. Performance on artificial test-data.
+
+## 1. Properties of good hash-combine function
+`NSDictionary` allows a fast access to an object by a key no matter how many elements are there. To do this it relies on `hash` method. `hash` must be equal for objects that are equal and should be different if they are not equal.
+If the `hash` for different objects is equal, it's called a collision and `NSDictionary` will call `isEqual` on all of them to find proper key. More on this topic by [NSHipster](http://nshipster.com/equality/) and [Mike Ash](https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html).
+Unfortunately it's not that simple in the real world. Internally hash-table stores keys in a so called buckets. The number of buckets is somewhat bigger then number of keys, we can see this in [CF-Foundation sources](https://github.com/opensource-apple/CF/blob/master/CFBasicHash.c). Dictionary is filled by 60%.
+Since `NSUInterMax` - the maximum number of `hash` value, is much bigger than number of buckets, it should be reduced to 0..number_of_buckets somehow. The way it's done is simple: a plain modulo operator
+`hash % number_of_buckets` is used.
+The more keys are placed into one bucket with same hash - the more collisions we get. When collision happens, key occupies the next available bucket. Grouping hashes in some area is a bad thing as we will see later.
+In the next section we will review popular methods to combine hashes.
+
+## 2. Existing implementations
+
+#### Naive way of Hash Building
+The first thing that comes to mind is to sum or xor 2 dates: 
+```obj-c
 - (NSUInteger)hash {
-  return msgType + content.hash
+  return start.hash + end.hash
 }
 ```
-which would work almost ok. Well, not really. If fields are somewhat correlated - it's a disaster as I'll show later.
+Well, sum or hash of 2 integers is really single instruction and everything looks good. Except it's not: it produces too many collisions as I'll show later.
 
-My curiosity led me to make some research. The first thing I did is looked in the Swift sources. All-in-all, this must be solved problem and Apple engineers must have a solution. And they do:
-
-```swift
-/// taken from implementation of NSData
-public var hashValue: Int {
-    switch _backing {
-    case .customReference(let d):
-        return d.hash
-    case .customMutableReference(let d):
-        return d.hash
-    default:
-        let len = _length
-        return Int(bitPattern: CFHashBytes(_bytes?.assumingMemoryBound(to: UInt8.self), Swift.min(len, 80)))
-    }
-}
-```
-
-The interesting function in CFHashBytes. Unfortunately it's a private function in CoreFoundation. We can still find it [here]
-(https://github.com/opensource-apple/CF/blob/master/CFUtilities.c). This implementation uses ELF hash algorithm.
-A great introduction for this hash function and few others can be found [here](http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx#elf). Go read it, it's great.
-
-Another source of inspiration is boost. Boost has everything, and [hash combining](http://www.boost.org/doc/libs/1_35_0/doc/html/hash/combine.html) is not an exception. The interesting function is quite simple:
+#### C++ Boost Hash Combine
+Boost is well-known, high quality and efficient c++ library. It also contains [hash combining](http://www.boost.org/doc/libs/1_35_0/doc/html/hash/combine.html). The interesting function is rather simple:
 ```c++
 template <typename SizeT>
 inline void hash_combine_impl(SizeT& seed, SizeT value)
@@ -57,97 +54,142 @@ inline void hash_combine_impl(SizeT& seed, SizeT value)
     seed ^= value + 0x9e3779b9 + (seed<<6) + (seed>>2);
 }
 ```
-
 Boost uses sort of Shift-Add-XOR hash function.
 
-There is an article from [Mike Ash](https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html) on this topic as well. Which suggests using rotate and xor:
+#### Mike Ash
+There is an article from [Mike Ash](https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html) on this topic as well. He suggests using rotate and xor:
 ```objc
 #define NSUINT_BIT (CHAR_BIT * sizeof(NSUInteger))
 #define NSUINTROTATE(val, howmuch) ((((NSUInteger)val) << howmuch) | (((NSUInteger)val) >> (NSUINT_BIT - howmuch)))
 
 - (NSUInteger)hash
 {
-    return NSUINTROTATE(self.content.hash, NSUINT_BIT / 2) ^ self.msgType;
+    return NSUINTROTATE(self.start.hash, NSUINT_BIT / 2) ^ self.end.hash;
 }
 ```
 
-
-[Apache.Commons.HashCodeBuilder](https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/builder/HashCodeBuilder.html) suggests using prime integer summation and multiplication:
+#### Apache.Commons
+In Java there is [Apache.Commons.HashCodeBuilder](https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/builder/HashCodeBuilder.html). It uses simple prime number multiplication algorithm.
 ```objc
-void PrimeIntegerHashCombine(NSUInteger* hashCombine, NSUInteger value) {
-    *hashCombine = *hashCombine * 37 + value;
-}
 - (NSUInteger)hash {
     NSUInteger hash = 17;
-    hash = hash * 37 + self.content.hash;
-    hash = hash * 37 + self.msgType;
+    hash = hash * 37 + self.start.hash;
+    hash = hash * 37 + self.end.hash;
     return hash
 }
 ```
-    
 
-
-Having all this, it's better to run a quick test to see which one is fastest. The ideal function must be calculated very fast and generate no collisions at all.
-
-To keep things simple, I only tried simplest functions:
-
-* `sum`: `hash1 + hash2`
-* `xor`: `hash1 ^ hash2`
-* [`mike-ash`](https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html)
-* [`prime-integer-multiply`](https://commons.apache.org/proper/commons-lang/apidocs/org/apache/commons/lang3/builder/HashCodeBuilder.html)
-* [`boost`](http://www.boost.org/doc/libs/1_35_0/doc/html/hash/combine.html)
-* [`oat`](http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx)
-* [`fnv`](http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx)
-
-I picked simple data: composed objects that consist of 
-* integer[1..1000000] and rnd(10)
-* rnd(1000000) and rnd(1000000)
-* UUID and UUID
-* String(i) for i = 1...1000000
-
-See a (test project)[https://github.com/myeyesareblind/HashCombine] for more details.
-
-One thing to note: NSNumber has a smart hash method. Look:
+#### CFHashBytes
+Most of the Foundation objects override `hash` method. Look:
 ```obj-c
 [NSNumber numberWithInt:1].hash = 2654435761
 [NSNumber numberWithInt:2].hash = 5308871522
+[[NSDate dateWithTimeIntervalSince1970:0] hash] = 2596853616923779200
+[[NSDate dateWithTimeIntervalSince1970:1] hash] = 2596853614269343439
+[@"hello_hello_hello_hello" hash] = 12392780783853204868
+[@"hello_hello_hello_hello1" hash] = 4243784906404336054
 ```
-Combining using `NSNumber.hash` will give much better results.
+Change in 1 bit produces very different result. This all was done to reduce the amount of collisions.
 
-And these are result, the values are in seconds. The smaller - the better.
+Starting iOS10, there is a `NSDateInterval` class that does just what we need.
+Taken from [swift sources](https://github.com/apple/swift/blob/master/stdlib/public/SDK/Foundation/DateInterval.swift):
 
-Hash-Func     | int, rnd(10) | rnd, rnd | UUID, UUID | Str(i), Str(i) | total
-------------- | ------------ | -------- | ---------- | -------------- | -----
-sum           | 9.15         | 17.88    | 14.71      | 78.85          | 120.59
-xor           | 7.28         | ∞        | 14.20      | ∞              | ∞
-mike-ash      | 5.56         | 6.07     | 10.96      | 8.45           | 31.04
-prime-int-mul | 4.27         | 6.15     | 10.98      | 7.11           | 28.5
-boost         | 4.61         | 6.12     | 10.87      | 7.96           | 29.5
-oat           | 5.50         | 6.05     | 11.02      | 8.44           | 31
-fnv           | 4.71         | 6.05     | 11.81      | 7.88           | 30.45
+```swift
+public var hashValue: Int {
+    var buf: (UInt, UInt) = (UInt(start.timeIntervalSinceReferenceDate), UInt(end.timeIntervalSinceReferenceDate))
+    return withUnsafeMutablePointer(to: &buf) {
+        $0.withMemoryRebound(to: UInt8.self, capacity: 2 * MemoryLayout<UInt>.size / MemoryLayout<UInt8>.size) {
+            return Int(bitPattern: CFHashBytes($0, CFIndex(MemoryLayout<UInt>.size * 2)))
+        }
+    }
+}
+```
+Under the hood, it uses `CFHashBytes` function. Unfortunately it's a private function in CoreFoundation. We can still find it [open source Apple Core Foundation](https://github.com/opensource-apple/CF/blob/master/CFUtilities.c). This implementation uses ELF hash algorithm.
 
-Another useful insight is how many collisions did the function generate. The smaller - the better.
+#### FNV
+FNV stands for Fowler/Noll/Vo. Was developed for hashing strings, but can be generalized to hash any byte sequence.
+Also used in [Roslyn .NET Compiler](https://github.com/dotnet/roslyn/blob/master/src/Compilers/Core/Portable/InternalUtilities/Hash.cs).
+```obj-c
+void FNVHashUpdate(NSUInteger* h, NSUInteger value) {
+    NSUInteger magic = 1099511628211lu;
+    NSUInteger hash = *h;
+    unsigned char *p = (unsigned char*)&value;
+    for (int i = 0; i < sizeof(NSUInteger); i++) {
+        hash = (hash ^ p[i]) * magic;
+    }
+    *h = hash;
+}
+```
 
-Hash-Func     | int, rnd(10) | rnd, rnd | UUID, UUID | Str(i), Str(i) | total
-------------- | ------------ | -------- | ---------- | -------------- | -----
-sum           | 3487593      | 2640790  | 0          | 0              | 6127498
-xor           | 6512749      | 2818959  | 0          | 9999999        | 19331707
-mike-ash      | 0            | 0        | 0          | 784989         | 784989
-prime-int-mu  | 0            | 132252   | 0          | 0              | 132252
-boost         | 13036        | 78221    | 0          | 0              | 91257
-oat           | 0            | 0        | 0          | 0              | 0
-fnv           | 0            | 0        | 0          | 0              | 0
+#### One-at-a-Time Hash
+Made by [Bob Jenkins](https://en.wikipedia.org/wiki/Jenkins_hash_function), it's a default hash function in Perl.
+I've no idea how did he come up with this, but it's works really good.
+```obj-c
+void OATHashUpdate(NSUInteger* h, NSUInteger value) {
+    unsigned char *p = (unsigned char*)&value;
+    NSUInteger hash = *h;
 
-* `∞` means I couldn't wait so long. `xor` on correlated fields is a bad idea.
-* `sum` is 4 times slower then any other function on 2 strings input. I am not sure why that happened, there is really no reason for it. Ignoring this outlier it's still much slower due to high number of collisions.
-* `xor` failed on 2 rnd and 2 strings input. Not sure what is wrong with rnd, rnd. 2 strings failed because there is only 1 hash value for all of them - 0, since 2 hashes negate each other.
-* `mike-ash` did well, but somehow on 2 strings generated a lot of collision, which affected the result.
-* `prime-int-mul` is the fastest on this input. It requires just a few instructions and generated 1.3% of collisions only on 2 random integers input.
-* `boost` is like `prime-int-mul`: it requires few instructions, but generates more collisions.
-* `oat` and `fnv` don't have any collisions, but are slow to calculate.
+    for (int i = 0; i < sizeof(NSUInteger); i++) {
+        hash += p[i];
+        hash += (hash << 10);
+        hash ^= (hash >> 6);
+    }
+    *h = hash;
+}
 
-Basically all, but trivial functions, have similar performance. `sum` and `xor` are very fast to calculate, but have too many collisions which leads to poor overall performance. 
+void OATHashFinalize(NSUInteger* h) {
+    NSUInteger hash = *h;
+    hash += (hash << 3);
+    hash ^= (hash >> 11);
+    hash += (hash << 15);
+    *h = hash;
+}
 
-Since `prime-int-mul` was the fastest, I made a [cocoapod](https://github.com/myeyesareblind/HashCombine) for it.
+- (NSUInteger)hash {
+    NSUInteger hash = 0;
+    OATHashUpdate(&hash, self.start.hash);
+    OATHashUpdate(&hash, self.end.hash);
+    OATHashFinalize(&hash);
+    return hash
+}
+```
+
+#### JenkinsHashCombine
+The most recent hash function from Bob Jenkins called [SpookyHash](http://burtleburtle.net/bob/hash/spooky.html).
+The implementation is really complicated to inline here. [See](https://github.com/andikleen/spooky-c) yourself.
+
+
+## 3. Performance on artificial test-data
+Having all this, it's better to run a quick test to see which one is fastest.
+I picked simple and generic data: composed objects that contains 2 random integer values from uniform distribution: 
+```
+Num_of_samples = 10_000_000
+arc4random(num_of_samples)
+```
+
+Those objects are put into `NSDictionary` as keys, and we are interested in duration of this operation.
+
+See a [test project](https://github.com/myeyesareblind/HashCombine) for more details.
+
+The values are in seconds. The smaller - the better.
+![duration bar-plot]({{ "/assets/img/make_nsdictionary_duration.png" | prepend: site.baseurl }})
+`xor` didn't complete in any reasonable time.
+
+Why some functions are better than others? Well, because of collisions. Let's verify this using key distribution plot. 
+Since we know the number of buckets, we can simulate construction of `NSDictionary`. For each `hash` we will find an empty index, and for each index we check - increment number of visits. Plot is better then words. We can't plot that much of a data, so I'll use 500 samples. 
+
+![distribution of buckets-plot]({{ "/assets/img/500distributions.png" | prepend: site.baseurl }})
+
+The number of buckets for holding 500 keys is 1087 - that's X axis on the plot.
+Y axes are number of visits in each bucket, which is actual number of `isEqual:` calls.
+Good hash function should be evenly distributed on 0...1087 range. 
+
+We can see that `sum` is slightly grouped around center, which makes sense for sum of 2 numbers.
+`xor` has maximum at 510 - that's random number upper bound (500) + collisions. `xor` only uses half of all available interval, which leads to huge spikes. Because each collision occupies next empty bucket, number of collisions grow nonlinearly.
+Other functions don't have visible peaks and are distributed evenly.
+
+Basically all, but trivial functions, have similar performance. `sum` and `xor` have too many collisions which leads to poor overall performance. Using advanced hash functions as `fnv`, `oat`, `elf` and `jenkins` doesn't really makes sense on typical input. Most of the time functions from Mike Ash, Boost and Apache Commons will suffice. I'll be using Apache version in my current project.
+
+Big thanks [@FalconSer](https://twitter.com/FalconSer) for support.
 
 Happy hashing.
