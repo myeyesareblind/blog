@@ -85,6 +85,7 @@ ogp:
 gems:
   - jekyll-paginate
   - jemoji
+  - jekyll-sitemap
 
 #
 # Styles: see "_sass/base/_variables.scss"
