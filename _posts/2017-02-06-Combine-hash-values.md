@@ -199,6 +199,7 @@ See a [test project](https://github.com/myeyesareblind/HashCombine) for more det
 
 The values are in seconds. The smaller - the better.
 ![duration bar-plot]({{ "/assets/img/make_nsdictionary_duration.png" | prepend: site.baseurl }})
+
 `xor` didn't complete in any reasonable time.
 
 Why some functions are better than others? Well, because of collisions. Let's verify this using key distribution plot. 
