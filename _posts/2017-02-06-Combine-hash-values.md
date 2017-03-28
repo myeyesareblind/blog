@@ -6,9 +6,12 @@ tags: swift objc hash boost ios osx
 
 TLDR: to make a hash of a custom class, that contains few primitive properties with defined `hash` methods - use this
 ```
-NSUInteger hash = 17 * 37 + self.prop1.hash;
-hash = 17 * 37 + self.prop2.hash;
-return hash;
+- (NSUInteger)hash {
+  NSUInteger hash = 0;
+  hash = 17 * 37 + self.prop1.hash;
+  hash = 17 * 37 + self.prop2.hash;
+  return hash;
+}
 ```
 
 ## Hashing
@@ -28,10 +31,33 @@ In this article I want to discuss:
 ## 1. Properties of good hash-combine function
 `NSDictionary` allows a fast access to an object by a key no matter how many elements are there. To do this it relies on `hash` method. `hash` must be equal for objects that are equal and should be different if they are not equal.
 If the `hash` for different objects is equal, it's called a collision and `NSDictionary` will call `isEqual` on all of them to find proper key. More on this topic by [NSHipster](http://nshipster.com/equality/) and [Mike Ash](https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html).
-Unfortunately it's not that simple in the real world. Internally hash-table stores keys in a so called buckets. The number of buckets is somewhat bigger then number of keys, we can see this in [CF-Foundation sources](https://github.com/opensource-apple/CF/blob/master/CFBasicHash.c). Dictionary is filled by 60%.
-Since `NSUInterMax` - the maximum number of `hash` value, is much bigger than number of buckets, it should be reduced to 0..number_of_buckets somehow. The way it's done is simple: a plain modulo operator
+
+That's what documentation says. Unfortunately, it's not that simple in the real world. Internally hash-table stores keys in a so called buckets. The number of buckets is somewhat bigger then number of keys, we can see this in [CF-Foundation sources](https://github.com/opensource-apple/CF/blob/master/CFBasicHash.c). 
+
+| Number of keys | Number of buckets (Actual NSDictionary Size) |
+| -------------- | ------------------------ |
+| 0              | 0                        |
+| 3              | 3                        |
+| 6              | 7                        |
+| 11             | 13                       |
+| 19             | 23                       |
+| 32             | 41                       |
+| 52             | 71                       |
+| 85             | 127                      |
+| 118            | 191                      |
+| 155            | 251                      |
+| 237            | 383                      |
+| 390            | 631                      |
+| 672            | 1087                     |
+
+and so on ...
+
+We can see few facts: dictionary is filled by about 60% mostly, the actual size is always prime integer.
+[There is](http://ciechanowski.me/blog/2014/04/08/exposing-nsdictionary/) a blog that discusses this in more details.
+In short: each key must be put into sinlge bucket. We need to calculate index of a bucket based on `hash`. Since `NSUInterMax` - the maximum number of `hash` value, is much bigger than number of buckets, it should be reduced to `[0..number_of_buckets)` somehow. The way it's done is simple: a plain modulo operator
 `hash % number_of_buckets` is used.
-The more keys are placed into one bucket with same hash - the more collisions we get. When collision happens, key occupies the next available bucket. Grouping hashes in some area is a bad thing as we will see later.
+The more keys have same modulo hash - the more collisions we get. When collision happens, key occupies next empty bucket. This can lead to grouping hashes in some area, which is really bad as we'll see next.
+
 In the next section we will review popular methods to combine hashes.
 
 ## 2. Existing implementations
@@ -180,9 +206,9 @@ Since we know the number of buckets, we can simulate construction of `NSDictiona
 
 ![distribution of buckets-plot]({{ "/assets/img/500distributions.png" | prepend: site.baseurl }})
 
-The number of buckets for holding 500 keys is 1087 - that's X axis on the plot.
+The number of buckets for holding 500 keys is 1087 (according to table of sizes above) - that's X axis on the plot.
 Y axes are number of visits in each bucket, which is actual number of `isEqual:` calls.
-Good hash function should be evenly distributed on 0...1087 range. 
+Good hash function should be evenly distributed in 0..1087 range. 
 
 We can see that `sum` is slightly grouped around center, which makes sense for sum of 2 numbers.
 `xor` has maximum at 510 - that's random number upper bound (500) + collisions. `xor` only uses half of all available interval, which leads to huge spikes. Because each collision occupies next empty bucket, number of collisions grow nonlinearly.
@@ -190,6 +216,4 @@ Other functions don't have visible peaks and are distributed evenly.
 
 Basically all, but trivial functions, have similar performance. `sum` and `xor` have too many collisions which leads to poor overall performance. Using advanced hash functions as `fnv`, `oat`, `elf` and `jenkins` doesn't really makes sense on typical input. Most of the time functions from Mike Ash, Boost and Apache Commons will suffice. I'll be using Apache version in my current project.
 
-Big thanks [@FalconSer](https://twitter.com/FalconSer) for support.
-
-Happy hashing.
+Big thanks [@FalconSer](https://twitter.com/FalconSer) for reading drafts and suggestions.
