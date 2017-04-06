@@ -4,7 +4,7 @@ title: Combining hash values
 tags: swift objc hash boost ios osx
 ---
 
-TLDR: to make a hash of a custom class, that contains few primitive properties with defined `hash` methods - use this
+TLDR: to make a hash of a custom class that contains few primitive properties with defined `hash` methods, use this:
 ```
 - (NSUInteger)hash {
   NSUInteger hash = 0;
@@ -15,24 +15,24 @@ TLDR: to make a hash of a custom class, that contains few primitive properties w
 ```
 
 ## Hashing
-`NSDictionary` is a collection that we use everyday. Most of the time we use a native type as a key, something like `NSDictionary<NSString, MyClass>` and everything just works. But sometimes it's required to use a custom object as a key. For example, I needed to store array of events per date-range: `NSDictionary<MyDateRange, NSArray>`, where `MyDateRange` is:
+`NSDictionary` is a collection that we use every day. Most of the times we use a native type as a key, something like `NSDictionary<NSString, MyClass>` and everything just works. But sometimes it's required to use a custom object as a key. For example, I needed to store an array of events per date-range: `NSDictionary<MyDateRange, NSArray>`, where `MyDateRange` is:
 ```obj-c
 @interface MyDateRange
 @property (readwrite) NSDate *start;
 @property (readwrite) NSDate *end;
 @end
 ```
-When using a custom `NSObject` as a key in dictionary it's required to implement `isEqual:`, `copyWithZone:` and `hash` methods. `isEqual` and `copyWithZone` are easy: we simply compare/copy `NSDate` properties. `hash` is not: we need to combine hashes of 2 `NSDate`.
+When using a custom `NSObject` as a key in dictionary, it's required to implement `isEqual:`, `copyWithZone:` and `hash` methods. `isEqual` and `copyWithZone` are easy: we simply compare/copy `NSDate` properties. `hash` is not: we need to combine hashes of 2 `NSDate`.
 In this article I want to discuss:
 1. The properties that a good hash function must possess.
 2. Existing implementations from a few well-known libraries.
-3. Performance on artificial test-data.
+3. Performance with artificial test-data.
 
-## 1. Properties of good hash-combine function
-`NSDictionary` allows a fast access to an object by a key no matter how many elements are there. To do this it relies on `hash` method. `hash` must be equal for objects that are equal and should be different if they are not equal.
+## 1. Properties of a good hash-combine function
+`NSDictionary` allows a fast access to an object by a key no matter how many elements there are. To do this `hash` method is being used. `hash` must be equal for objects that are equal and should be different if they are not equal.
 If the `hash` for different objects is equal, it's called a collision and `NSDictionary` will call `isEqual` on all of them to find proper key. More on this topic by [NSHipster](http://nshipster.com/equality/) and [Mike Ash](https://www.mikeash.com/pyblog/friday-qa-2010-06-18-implementing-equality-and-hashing.html).
 
-That's what documentation says. Unfortunately, it's not that simple in the real world. Internally hash-table stores keys in a so called buckets. The number of buckets is somewhat bigger then number of keys, we can see this in [CF-Foundation sources](https://github.com/opensource-apple/CF/blob/master/CFBasicHash.c). 
+That's what documentation says. Unfortunately, it's not that simple in the real world. Internally, hash-table stores keys in a so called buckets. The number of buckets is somewhat bigger then a number of keys, we can see this in [CF-Foundation sources](https://github.com/opensource-apple/CF/blob/master/CFBasicHash.c). 
 
 | Number of keys | Number of buckets (Actual NSDictionary Size) |
 | -------------- | ------------------------ |
@@ -53,23 +53,23 @@ That's what documentation says. Unfortunately, it's not that simple in the real 
 and so on ...
 
 We can see few facts: dictionary is filled by about 60% mostly, the actual size is always prime integer.
-[There is](http://ciechanowski.me/blog/2014/04/08/exposing-nsdictionary/) a blog that discusses this in more details.
-In short: each key must be put into sinlge bucket. We need to calculate index of a bucket based on `hash`. Since `NSUInterMax` - the maximum number of `hash` value, is much bigger than number of buckets, it should be reduced to `[0..number_of_buckets)` somehow. The way it's done is simple: a plain modulo operator
+[There is](http://ciechanowski.me/blog/2014/04/08/exposing-nsdictionary/) a blog that covers this in more details.
+In short: each key must be put into a sinlge bucket. We need to calculate index of a bucket based on `hash`. Since `NSUInterMax`, the maximum number of `hash` value, is much bigger than number of buckets, it should be reduced to `[0..number_of_buckets)` somehow. The way it's done is simple: a plain modulo operator
 `hash % number_of_buckets` is used.
-The more keys have same modulo hash - the more collisions we get. When collision happens, key occupies next empty bucket. This can lead to grouping hashes in some area, which is really bad as we'll see next.
+The more keys have same modulo hash - the more collisions we get. When collision happens, one of the collision keys occupies next empty bucket. This can lead to grouping keys in one area, which is really bad as I'll cover in next section.
 
 In the next section we will review popular methods to combine hashes.
 
 ## 2. Existing implementations
 
 #### Naive way of Hash Building
-The first thing that comes to mind is to sum or xor 2 dates: 
+The first thing that comes to mind is to `+` or `^` 2 dates: 
 ```obj-c
 - (NSUInteger)hash {
   return start.hash + end.hash
 }
 ```
-Well, sum or hash of 2 integers is really single instruction and everything looks good. Except it's not: it produces too many collisions as I'll show later.
+Well, `+` or `^` of 2 integers is really single instruction and everything looks good. Except it's not: it produces too many collisions as I'll show later.
 
 #### C++ Boost Hash Combine
 Boost is well-known, high quality and efficient c++ library. It also contains [hash combining](http://www.boost.org/doc/libs/1_35_0/doc/html/hash/combine.html). The interesting function is rather simple:
@@ -130,7 +130,7 @@ public var hashValue: Int {
     }
 }
 ```
-Under the hood, it uses `CFHashBytes` function. Unfortunately it's a private function in CoreFoundation. We can still find it [open source Apple Core Foundation](https://github.com/opensource-apple/CF/blob/master/CFUtilities.c). This implementation uses ELF hash algorithm.
+Under the hood, it uses `CFHashBytes` function. Unfortunately, it's a private function in CoreFoundation. We can still find it [open source Apple Core Foundation](https://github.com/opensource-apple/CF/blob/master/CFUtilities.c). This implementation uses ELF hash algorithm.
 
 #### FNV
 FNV stands for Fowler/Noll/Vo. Was developed for hashing strings, but can be generalized to hash any byte sequence.
@@ -181,13 +181,13 @@ void OATHashFinalize(NSUInteger* h) {
 ```
 
 #### JenkinsHashCombine
-The most recent hash function from Bob Jenkins called [SpookyHash](http://burtleburtle.net/bob/hash/spooky.html).
-The implementation is really complicated to inline here. [See](https://github.com/andikleen/spooky-c) yourself.
+The most recent hash function from Bob Jenkins is called [SpookyHash](http://burtleburtle.net/bob/hash/spooky.html).
+The implementation is really complicated to inline here. [See](https://github.com/andikleen/spooky-c) for yourself.
 
 
 ## 3. Performance on artificial test-data
-Having all this, it's better to run a quick test to see which one is fastest.
-I picked simple and generic data: composed objects that contains 2 random integer values from uniform distribution: 
+Having all this, it's better to run a quick test to see which one is the fastest.
+I picked simple and generic data: composed objects that contains 2 random integer values from random distribution: 
 ```
 Num_of_samples = 10_000_000
 arc4random(num_of_samples)
@@ -203,7 +203,7 @@ The values are in seconds. The smaller - the better.
 `xor` didn't complete in any reasonable time.
 
 Why some functions are better than others? Well, because of collisions. Let's verify this using key distribution plot. 
-Since we know the number of buckets, we can simulate construction of `NSDictionary`. For each `hash` we will find an empty index, and for each index we check - increment number of visits. Plot is better then words. We can't plot that much of a data, so I'll use 500 samples. 
+Since we know the number of buckets, we can simulate construction of `NSDictionary`. For each `hash` we will find an empty index, and for each index we check - increment number of visits. Plot is better than words. We can't plot that much of a data, so I'll use 500 samples. 
 
 ![distribution of buckets-plot]({{ "/assets/img/500distributions.png" | prepend: site.baseurl }})
 
@@ -211,10 +211,12 @@ The number of buckets for holding 500 keys is 1087 (according to table of sizes 
 Y axes are number of visits in each bucket, which is actual number of `isEqual:` calls.
 Good hash function should be evenly distributed in 0..1087 range. 
 
-We can see that `sum` is slightly grouped around center, which makes sense for sum of 2 numbers.
-`xor` has maximum at 510 - that's random number upper bound (500) + collisions. `xor` only uses half of all available interval, which leads to huge spikes. Because each collision occupies next empty bucket, number of collisions grow nonlinearly.
+We can see that `sum` is slightly grouped around the center, which makes sense for sum of 2 numbers.
+`xor` has maximum at 510 - that's a random number upper bound (500) + collisions. `xor` only uses half of all available interval, which leads to huge spikes. Because each collision occupies next empty bucket, number of collisions grow non-linearly.
 Other functions don't have visible peaks and are distributed evenly.
 
-Basically all, but trivial functions, have similar performance. `sum` and `xor` have too many collisions which leads to poor overall performance. Using advanced hash functions as `fnv`, `oat`, `elf` and `jenkins` doesn't really makes sense on typical input. Most of the time functions from Mike Ash, Boost and Apache Commons will suffice. I'll be using Apache version in my current project.
+Basically all, but trivial functions, have similar performance. `sum` and `xor` have too many collisions which leads to poor overall performance. Using advanced hash functions as `fnv`, `oat`, `elf` and `jenkins` doesn't really makes sense on typical input. Most of the times functions from Mike Ash, Boost and Apache Commons are sufficient enough. I'll be using Apache version in my current project.
 
 Big thanks [@FalconSer](https://twitter.com/FalconSer) for reading drafts and suggestions.
+
+Happy hashing!.
