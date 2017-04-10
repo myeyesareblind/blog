@@ -7,9 +7,9 @@ tags: swift objc hash boost ios osx
 TLDR: to make a hash of a custom class that contains few primitive properties with defined `hash` methods, use this:
 ```
 - (NSUInteger)hash {
-  NSUInteger hash = 0;
-  hash = 17 * 37 + self.prop1.hash;
-  hash = 17 * 37 + self.prop2.hash;
+  NSUInteger hash = 17;
+  hash = hash * 37 + self.prop1.hash;
+  hash = hash * 37 + self.prop2.hash;
   return hash;
 }
 ```
