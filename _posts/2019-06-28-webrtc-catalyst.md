@@ -1,5 +1,8 @@
-# How to build WebRTC for Mac-Catalyst or Ninja intro for Apple-developers.
-
+---
+layout: post
+title: How to build WebRTC for Mac-Catalyst or Ninja intro for Apple-developers
+tags: ninja catalyst marzipan xcode cdnbye
+---
 
 **WebRTC** is a de-facto standard for conferencing and peer-to-peer data exchange. It's mature, highly optimized, and build-in into major browsers. For most platforms, it's easy to embed into your application, since WebRTC's team ships binary builds in various formats.
 
