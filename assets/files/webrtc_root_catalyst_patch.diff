@@ -1,0 +1,23 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index adb78df424..052a522f78 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -194,6 +194,18 @@ config("common_inherited_config") {
+   if (is_chromeos) {
+     defines += [ "CHROMEOS" ]
+   }
++  defines += [ "HAVE_NO_MEDIA" ]
++  cflags += [ 
++    "-iframework", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk/System/iOSSupport/System/Library/Frameworks",
++    "-isystem", "/Applications/Xcode-beta.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk/System/iOSSupport/usr/include"
++  ]
++  ldflags += [
++      "-iframework", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk/System/iOSSupport/System/Library/Frameworks"
++  ]
++
++  cflags += [ 
++    "-Wno-error"
++  ]
+ 
+   if (rtc_sanitize_coverage != "") {
+     assert(is_clang, "sanitizer coverage requires clang")

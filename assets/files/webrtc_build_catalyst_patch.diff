@@ -1,0 +1,86 @@
+diff --git a/config/ios/BUILD.gn b/config/ios/BUILD.gn
+index 795b4d8a4..b4ff8c85b 100644
+--- a/config/ios/BUILD.gn
++++ b/config/ios/BUILD.gn
+@@ -77,20 +77,16 @@ config("runtime_library") {
+     common_flags = [
+       "-isysroot",
+       rebase_path(sysroot, root_build_dir),
++      "--target=x86_64-apple-ios13.0-macabi"
+     ]
+   } else {
+     common_flags = [
+       "-isysroot",
+       sysroot,
++      "--target=x86_64-apple-ios13.0-macabi"
+     ]
+   }
+ 
+-  if (use_ios_simulator) {
+-    common_flags += [ "-mios-simulator-version-min=$ios_deployment_target" ]
+-  } else {
+-    common_flags += [ "-miphoneos-version-min=$ios_deployment_target" ]
+-  }
+-
+   if (use_xcode_clang && enable_ios_bitcode && !use_ios_simulator) {
+     if (is_debug) {
+       common_flags += [ "-fembed-bitcode-marker" ]
+diff --git a/config/ios/ios_sdk.gni b/config/ios/ios_sdk.gni
+index 917a6902a..7cc6071ca 100644
+--- a/config/ios/ios_sdk.gni
++++ b/config/ios/ios_sdk.gni
+@@ -11,15 +11,19 @@ assert(use_system_xcode, "Hermetic xcode doesn't work for ios.")
+ declare_args() {
+   # SDK path to use. When empty this will use the default SDK based on the
+   # value of use_ios_simulator.
+-  ios_sdk_path = ""
+-  ios_sdk_name = ""
+-  ios_sdk_version = ""
+-  ios_sdk_platform = ""
+-  ios_sdk_platform_path = ""
+-  xcode_version = ""
+-  xcode_version_int = 0
+-  xcode_build = ""
+-  machine_os_build = ""
++  ios_sdk_path = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.15.sdk"
++  ios_sdk_name = "iphoneSimulator"
++  ios_sdk_version = "13.0"
++  ios_sdk_platform = "MacOSX"
++  ios_sdk_platform_path = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform"
++  ios_sdk_platform_abs_path = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform"
++  xcode_version = "1140"
++  xcode_version_int = 1140
++  xcode_build = "11E146"
++  machine_os_build = "19D76"
++  ios_sdk_build = "17E255"
++  ios_platform_build = "17E255"
++
+ 
+   # Set DEVELOPER_DIR while running sdk_info.py.
+   # Due to https://crbug.com/1018739, the path must not contains filtered
+diff --git a/config/mac/mac_sdk.gni b/config/mac/mac_sdk.gni
+index c43c00dda..0f7d8525b 100644
+--- a/config/mac/mac_sdk.gni
++++ b/config/mac/mac_sdk.gni
+@@ -88,7 +88,7 @@ sdk_info_args += [ mac_sdk_name ]
+ _mac_sdk_result = exec_script(script_name, sdk_info_args, "scope")
+ xcode_version = _mac_sdk_result.xcode_version
+ xcode_build = _mac_sdk_result.xcode_build
+-machine_os_build = _mac_sdk_result.machine_os_build
++machine_os_build = "19D76"
+ machine_os_build_major = _mac_sdk_result.machine_os_build_major
+ if (mac_sdk_path == "" && use_system_xcode && ios_use_goma_rbe) {
+   mac_sdk_path = _mac_sdk_result.sdk_path
+diff --git a/toolchain/toolchain.gni b/toolchain/toolchain.gni
+index 597667814..88c5fc71b 100644
+--- a/toolchain/toolchain.gni
++++ b/toolchain/toolchain.gni
+@@ -20,7 +20,7 @@ declare_args() {
+   # Compile with Xcode version of clang instead of hermetic version shipped
+   # with the build. Used to be used iOS for official builds, but is now off by
+   # default for all configurations.
+-  use_xcode_clang = false
++  use_xcode_clang = true
+ 
+   # Used for binary size analysis.
+   generate_linker_map = is_android && is_official_build
