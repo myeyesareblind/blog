@@ -102,8 +102,8 @@ I hope you enjoyed reading and acquired basic knowledge of how to approach it yo
 
 ### UPD 15.08.2020
 Patch files:
-![apply at ./ dir]({{ "/files/webrtc_root_catalyst_patch.diff" | prepend: site.baseurl }})
-![apply at ./build dir]({{ "/files/webrtc_build_catalyst_patch.diff" | prepend: site.baseurl }})
+![apply at ./ dir]({{ "/assets/files/webrtc_root_catalyst_patch.diff" | prepend: site.baseurl }})
+![apply at ./build dir]({{ "/assets/files/webrtc_build_catalyst_patch.diff" | prepend: site.baseurl }})
 Note it only works when applied to [data_channel by cdnbye](https://github.com/cdnbye/WebRTCDatachannel), because it has opengl and other dependencies removed.
 
 
